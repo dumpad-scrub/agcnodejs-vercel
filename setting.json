@@ -3,6 +3,7 @@
   "author":"AGC-KU",
   "remove-comment-html":true,
   "target":"https://m.tribunnews.com",
+  "target":"https://www.pikiran-rakyat.com",
   "name-folder-sitemap":"sitemap",
   "element-remove":[
     "script",
@@ -74,7 +75,11 @@
       "data-attribute":[
         {
           "name-attribute":"name",
-          "value-attribute":"viewport"
+          "value-attribute":"google-site-verification"
+        },
+        {
+          "name-attribute":"content",
+          "value-attribute":"gXhoDmgx77a7T7Vm-AaFLAEgoE9X4UW2baKWRQkY6Y4"
         },
         {
           "name-attribute":"content",
