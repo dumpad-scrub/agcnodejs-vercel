@@ -2,7 +2,7 @@
   "name-web":"PUSAT INFORMASI TERBARU",
   "author":"AGC-KU",
   "remove-comment-html":true,
-  "target":"https://m.liputan6.com",
+  "target":"https://www.pikiran-rakyat.com/",
   "name-folder-sitemap":"sitemap",
   "element-remove":[
     "script",
