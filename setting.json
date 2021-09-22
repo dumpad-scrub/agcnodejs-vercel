@@ -2,7 +2,7 @@
   "name-web":"PUSAT INFORMASI TERBARU",
   "author":"AGC-KU",
   "remove-comment-html":true,
-  "target":"https://detik.com",
+  "target":"https://m.liputan6.com",
   "name-folder-sitemap":"sitemap",
   "element-remove":[
     "script",
