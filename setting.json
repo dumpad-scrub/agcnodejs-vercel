@@ -1,8 +1,8 @@
 {
-  "name-web":"PUSAT INFORMASI TERBARU",
+  "name-web":"BERITA DAN INFORMASI TERBARU",
   "author":"AGC-KU",
   "remove-comment-html":true,
-  "target":"https://detik.com",
+  "target":"https://m.tribunnews.com",
   "name-folder-sitemap":"sitemap",
   "element-remove":[
     "script",
