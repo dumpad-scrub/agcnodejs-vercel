@@ -1,8 +1,8 @@
 {
-  "name-web":"STACKOVERFLOW MASKODING",
-  "author":"MASKODING",
+  "name-web":"PUSAT INFORMASI TERBARU",
+  "author":"AGC-KU",
   "remove-comment-html":true,
-  "target":"https://m.tribunnews.com",
+  "target":"https://detik.com",
   "name-folder-sitemap":"sitemap",
   "element-remove":[
     "script",
