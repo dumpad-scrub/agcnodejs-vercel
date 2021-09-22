@@ -45,6 +45,105 @@ let getListFile = async (path)=>{
   });
 };
 
+const curlLink = async (url)=>{
+  return new Promise((resolve,reject)=>{
+    let testCurl = unirest.request({
+      uri:url,
+      headers: headerDafult,
+      gzip: true
+    }).on('error', error => {
+      resolve("err");
+    });
+    testCurl.on('response',(response)=>{
+      try{
+        testCurl.destroy();
+        let backSend={};
+        backSend.headers = response.headers;
+        backSend.code = response.statusCode;
+        resolve(backSend);
+      }catch(e){
+        resolve("err");
+      }
+    });
+  });
+};
+
+const curlContent = async (url)=>{
+  return new Promise((resolve,reject)=>{
+    let dataBody="";
+    let testCurl = unirest.request({
+      uri:url,
+      headers: headerDafult,
+      gzip: true
+    }).on('error', error => {
+      resolve("err");
+    })
+    .on('data', (data)=>{
+      dataBody+=data;
+    })
+    .on('end',()=>{
+      resolve(dataBody);
+    });
+  });
+};
+
+const removeElement = async (data,dom)=>{
+  return new Promise((resolve,reject)=>{
+    data.forEach((a)=>{
+      dom.querySelectorAll(a).forEach((b)=>{
+        b.remove();
+      });
+    });
+    resolve();
+  });
+};
+
+const remakeUrlElement = async (dom,option)=>{
+  return new Promise((resolve,reject)=>{
+    let hostnameComing = option.hostname;
+    dom.querySelectorAll(option.element).forEach((a)=>{
+      let hrefAttr=a.getAttribute(option.target);
+      if(hrefAttr==null){
+        //console.log(hrefAttr)
+      }else{
+        if(hrefAttr.indexOf("//")==0){
+          hrefAttr = hrefAttr.replace("//",option.proto+"://");
+        }else{
+          if(isUrl(hrefAttr)==false){
+            if(hrefAttr.indexOf("#")==0){
+              hrefAttr="#";
+            }else if(hrefAttr.indexOf("javascript")==0){
+              hrefAttr="#";
+            }else if(hrefAttr.indexOf("/")==0){
+              hrefAttr=option.url+hrefAttr;
+            }else{
+              hrefAttr=option.url+"/"+hrefAttr;
+            };
+          };
+        };
+        let hostnameHref = parseUrl(hrefAttr).hostname;
+        if(hostnameHref==hostnameComing){
+          const mapHref = parseUrl(hrefAttr);
+          const pathHref = mapHref.pathname+mapHref.query;
+          const dataReplace = option.origin+pathHref;
+          a.setAttribute(option.remake,dataReplace);
+        }else{
+          if(isUrl(hrefAttr)==false){
+            a.setAttribute(option.remake,hrefAttr);
+          }else{
+            const mapHref = parseUrl(hrefAttr);
+            const protoHref = mapHref.protocol.replace(":","-");
+            const pathHref = mapHref.pathname+mapHref.query;
+            const dataReplace = option.origin+"/host-"+protoHref+hostnameHref+pathHref;
+            a.setAttribute(option.remake,dataReplace);
+          };
+        };
+      };
+    });
+    resolve();
+  });
+};
+
 module.exports = async (req, res) => {
   //--- handle send response vercel (01) --
   if(!res.status){
@@ -61,7 +160,13 @@ module.exports = async (req, res) => {
   let dataSetting = await getFile("setting.json");
   dataSetting = await JSON.parse(dataSetting);
   let targetSitemap = await getListFile("sitemap");
-  let originUrl = await req.headers['x-forwarded-proto']+"://"+req.headers.host;
+  let proto = req.headers['x-forwarded-proto'];
+  if(proto){
+    proto = proto;
+  }else{
+    proto = "http";
+  };
+  let originUrl = await proto+"://"+req.headers.host;
   let fullUrl = await originUrl+req.url;
   try{
     if("/ping"==req.url){
@@ -160,320 +265,266 @@ module.exports = async (req, res) => {
           dataOrigin=await "host-"+parseUrl(linkPost).origin.replace("https://","https-").replace("http://","http-")
         };
         if(isUrl(linkPost)){
-          let checkType=unirest.request({
-            uri:linkPost,
-            headers: headerDafult,
-            gzip: true
-          }).on('error', error => {
+          let getInfo = await curlLink(linkPost);
+          if(getInfo=="err"){
             res.end("404");
-          });
-          checkType.on('response', function(response) {
-            try{
-              checkType.destroy();
-              let typeContent=response.headers['content-type'];
-              let codeContent=response.statusCode;
-              let resOriginHeader={};
-              if(response.headers["cache-control"]){
-                resOriginHeader["cache-control"]=response.headers["cache-control"];
-              };
-              if(response.headers["etag"]){
-                resOriginHeader["etag"]=response.headers["etag"];
-              };
-              if(response.headers["content-type"]){
-                resOriginHeader["content-type"]=response.headers["content-type"];
-              };
-              if(response.headers["last-modified"]){
-                resOriginHeader["last-modified"]=response.headers["last-modified"];
-              };
-              //console.log(response.headers)
-              // filter content type
-              if(typeContent.indexOf("text/html")==0&&codeContent!=404){
-                let body="";
-                let hostname=parseUrl(linkPost).hostname;
-                let origin=parseUrl(linkPost).origin;
-                let getContent=unirest.request({
-                  uri:linkPost,
-                  headers: headerDafult,
-                  gzip: true
-                }).on('error', error => {
-                  res.end("404");
-                });
-                getContent.on('data', function(data) {
-                  body=body+data;
-                });
-                getContent.on('end', function() {
-                  try{
-                    res.writeHead(200, {
-                      "content-type": typeContent,
-                      "content-encoding": "gzip"
-                    });
-                    let dom = new JSDOM(body,{ virtualConsole }).window.document;
-                    dataSetting["element-remove"].forEach(function(a){
-                      dom.querySelectorAll(a).forEach(function(b){
-                        b.remove();
-                      });
-                    });
-                    dom.querySelectorAll("link").forEach(function(a){
-                      let elLink=a.getAttribute("href");
-                      let eType=a.getAttribute("rel");
-                      if(elLink==null==false){
-                        if(a&&eType=="stylesheet"==false){
-                          if(isUrl(elLink)){
-                            let linkOrigin=parseUrl(elLink).origin;
-                            if(statusOrigin==false){
-                              let fixLinkOrigin=elLink.replace(linkOrigin,originUrl+dataOrigin);
-                              a.setAttribute("href",fixLinkOrigin);
-                            }else{
-                              let fixLinkOrigin=elLink.replace(linkOrigin,originUrl);
-                              a.setAttribute("href",fixLinkOrigin);
-                            };
-                            //console.log( fixLinkOrigin  );
-                          }else{
-                            if(statusOrigin==false){
-                              //console.log(elLink)
-                            }else{
-                              a.setAttribute("href",originUrl+elLink);
-                            };
-                            //console.log("-------")
-                          };
-                        }else{
-                          if(isUrl(elLink)){
-                            let styleOrigin=parseUrl(elLink).origin;
-                            if(styleOrigin.indexOf(parseUrl(dataSetting["target"]).hostname)==-1){
-                              elLink=elLink.replace(styleOrigin,"");
-                              styleOrigin=styleOrigin.replace("https://","host-https-").replace("http://","host-http-");
-                              a.setAttribute("href",originUrl+"/"+styleOrigin+elLink);
-                              //console.log();
-                            }
-                          }else{
-                            let reOrigin=origin.replace("https://","host-https-").replace("http://","host-http-");
-                            a.setAttribute("href",originUrl+"/"+reOrigin+elLink);
-                          };
-                        };
-                      };
-                    });
-                    dom.querySelectorAll("a").forEach(function(a){
-                      let linkHref=a.getAttribute("href");
-                      if(linkHref==null){
-                        //console.log(linkHref)
-                        //linkHref=aesCrypto.encrypt(origin,"");
-                      }else{
-                        if( linkHref.indexOf(hostname)>0 ){
-                          let uPathname=parseUrl(linkHref).pathname;
-                          let uQuery=parseUrl(linkHref).query;
-                          linkHref=uPathname+uQuery;
-                          if(statusOrigin==false){
-                            a.setAttribute("href",originUrl+dataOrigin+linkHref);
-                          }else{
-                            a.setAttribute("href",originUrl+linkHref);
-                          };
-                        }else{
-                          if(isUrl(linkHref)){
-                            if(linkHref.indexOf(dataSetting["target"])==-1){
-                              let proto=parseUrl(linkHref).protocol.replace(":","-");
-                              linkHref=linkHref.replace("https://","host-"+proto).replace("http://","host-"+proto);
-                              a.setAttribute("href",originUrl+"/"+linkHref);
-                            }else{
-                              linkHref=linkHref.replace(dataSetting["target"],"");
-                              a.setAttribute("href",originUrl+linkHref);
-                            };
-                          }else{
-                            if(statusOrigin==false){
-                              a.setAttribute("href",originUrl+dataOrigin+linkHref);
-                            };
-                          };
-                        };
-                      };
-                    });
-                    dom.querySelectorAll("img").forEach(function(a){
-                      let linkSrc=a.getAttribute("src");
-                      let dataSrc=a.getAttribute("data-src");
-                      if(dataSrc==null==false){
-                        linkSrc=dataSrc;
-                      };
-                      if(linkSrc==null==false){
-                        if(isUrl(linkSrc)){
-                          let srcOrigin=parseUrl(linkSrc).origin;
-                          linkSrc=linkSrc.replace(srcOrigin,"");
-                          srcOrigin=srcOrigin.replace("https://","host-https-").replace("http://","host-http-");
-                          linkSrc=originUrl+"/"+srcOrigin+linkSrc;
-                          a.setAttribute("src",linkSrc);
-                        }else{
-                          //console.log(linkSrc);
-                        };
-                      };
-                    });
-                    dataSetting["inject-element-head"].reverse().forEach(function(a){
-                      let createEl=dom.createElement(a["name-element"]);
-                      a["data-attribute"].forEach(function(b){
-                        createEl.setAttribute(b["name-attribute"],b["value-attribute"]);
-                      });
-                      createEl.innerHTML=a["data-innerHTML"];
-                      if(a["position"]=="start"){
-                        dom.head.insertBefore(createEl, dom.head.firstChild);
-                      }else{
-                        dom.head.appendChild(createEl);
-                      };
-                    });
-                    dataSetting["inject-element-body"].reverse().forEach(function(a){
-                      let createEl=dom.createElement(a["name-element"]);
-                      a["data-attribute"].forEach(function(b){
-                        createEl.setAttribute(b["name-attribute"],b["value-attribute"]);
-                      });
-                      createEl.innerHTML=a["data-innerHTML"];
-                      if(a["position"]=="start"){
-                        dom.body.insertBefore(createEl, dom.body.firstChild);
-                      }else{
-                        dom.body.appendChild(createEl);
-                      };
-                    });
-                    let dataTitle="";
-                    dom.querySelectorAll("title").forEach(function(a){
-                      dataTitle=a.innerHTML;
-                      a.remove();
-                    });
-                    let createTitle=dom.createElement("title");
-                    createTitle.innerHTML=dataTitle;
-                    dom.head.insertBefore(createTitle, dom.head.firstChild);
-                    let domBody=dom.body.outerHTML;
-                    let dataReplace=[];
-                    dataSetting["costom-element-remove"].forEach(function(a){
-                      if(a.target==hostname){
-                        a["element-remove-selector"].forEach(function(b){
-                          dom.querySelectorAll(b).forEach(function(c){
-                            c.remove();
-                          });
-                        });
-                        dataReplace=a["replace-string"];
-                      };
-                    });
-                    let textBody=dom.documentElement.querySelector("body").textContent;
-                    let dataDescription=[];
-                    for(var i=0;i<10;i++){
-                      textBody=textBody.replace(/\n/g,"").replace(/[`~!@#$%^&*()_\-+=\[\]{};:'"\\|\/<>?\s]/g, ' ').replace(/  /g," ");
-                    };
-                    textBody=textBody.split(" ");
-                    textBody.forEach(function(a,i){
-                      if(a.length>=3){
-                        if(i>10&&i<50){
-                          dataDescription.push(a);
-                        };
-                      };
-                    });
-                    if(dataDescription.length>0){
-                      dataDescription=dataDescription.join(" ");
-                    }else{
-                      dataDescription="";
-                    };
-                    dom=dom.documentElement.outerHTML;
-                    if(dataSetting["remove-comment-html"]){
-                      removeHtmlComments(domBody).comments.forEach(function(a){
-                        dom=dom.replace(a,"");
-                      });
-                    };
-                    dataReplace.forEach(function(a){
-                      dom=dom.replace(a.target,a.replace);
-                    });
-                    dom=dom.replace(/\$\{titlePost\}/g,dataTitle);
-                    dom=dom.replace(/\$\{urlPost\}/g,fullUrl);
-                    dom=dom.replace(/\$\{nameWeb\}/g,dataSetting["name-web"]);
-                    dom=dom.replace(/\$\{timePublish\}/g,new Date().toISOString());
-                    dom=dom.replace(/\$\{authorPost\}/g,dataSetting["author"]);
-                    dom=dom.replace(/\$\{descriptionPost\}/g,dataDescription+"...");
-                    dom="<!DOCTYPE html>"+dom;
-                    gzip(dom)
-                    .then((compressed) => {
-                      res.write(compressed);
-                      res.end();
-                    })
-                    .catch(function(e){
-                      res.end("404");
-                    })
-                  }catch(e){
-                    res.end("404");
-                  };
-                });
+          }else{
+            let typeContent=getInfo.headers['content-type'];
+            let codeContent=getInfo.code;
+            let resOriginHeader={};
+            if(getInfo.headers["cache-control"]){
+              resOriginHeader["cache-control"]=getInfo.headers["cache-control"];
+            };
+            if(getInfo.headers["etag"]){
+              resOriginHeader["etag"]=getInfo.headers["etag"];
+            };
+            if(getInfo.headers["content-type"]){
+              resOriginHeader["content-type"]=getInfo.headers["content-type"];
+            };
+            if(getInfo.headers["last-modified"]){
+              resOriginHeader["last-modified"]=getInfo.headers["last-modified"];
+            };
+            // filter content type  
+            if(typeContent.indexOf("text/html")==0&&codeContent!=404){
+              let hostname=parseUrl(linkPost).hostname;
+              let origin=parseUrl(linkPost).origin;
+              let dataContent = await curlContent(linkPost);
+              let body=dataContent;
+              if(body=="err"){
+                res.end("404");
               }else{
-                if(codeContent==404){
-                  res.end("404");
-                }else{
-                  // check content image
-                  if(typeContent.indexOf("image/")==0||typeContent.indexOf("font/")==0){
-                    let getContent=unirest.request({
-                      uri:linkPost,
-                      headers: headerDafult,
-                      gzip: true
-                    }).on('error', error => {
-                      console.log(error)
-                      res.end("404");
-                    }).pipe(res);
-                  }else if(typeContent.indexOf("application/atom+xml")==0||typeContent.indexOf("application/xml")==0||typeContent.indexOf("text/xml")==0||typeContent.indexOf("application/xslt+xml")==0){
-                    //console.log(linkPost)
-                    let dataXML="";
-                    let getContent=unirest.request({
-                      uri:linkPost,
-                      headers: headerDafult,
-                      gzip: true
-                    }).on('error', error => {
-                      res.end("404");
-                    });
-                    getContent.on('data', function(data) {
-                      dataXML=dataXML+data;
-                    });
-                    getContent.on('end', function() {
-                      try{
-                        let hostname="//"+parseUrl(linkPost).hostname;
-                        let re = new RegExp(dataSetting["target"], 'g');
-                        let re2 = new RegExp(hostname, 'g');
-                        if(statusOrigin==false){
-                          re = new RegExp(parseUrl(linkPost).origin, 'g');
-                        };
-                        dataXML=dataXML.replace(re,originUrl+"/"+dataOrigin);
-                        dataXML=dataXML.replace(re2,originUrl+"/"+dataOrigin);
-                        res.writeHead(200, {
-                          "content-type": typeContent
-                        });
-                        res.end(dataXML);
-                      }catch(e){
-                        res.end("404");
-                      };
-                    });
-                  }else if(typeContent.indexOf("text/css")==0){
-                    let dataCSS="";
-                    let getContent=unirest.request({
-                      uri:linkPost,
-                      headers: headerDafult,
-                      gzip: true
-                    }).on('error', error => {
-                      res.end("404");
-                    });
-                    getContent.on('data', function(data) {
-                      dataCSS=dataCSS+data;
-                    });
-                    getContent.on('end', function() {
-                      res.writeHead(200,resOriginHeader);
-                      //console.log(dataCSS);
-                      res.end(dataCSS);
-                    });
+                res.writeHead(200, {
+                  "content-type": typeContent,
+                  "content-encoding": "gzip"
+                });
+                let dom = new JSDOM(body,{ virtualConsole }).window.document;
+                await removeElement(dataSetting["element-remove"],dom);
+                await remakeUrlElement(dom,{
+                  "element":"link",
+                  "target":"href",
+                  "remake":"href",
+                  "origin":originUrl,
+                  "proto":proto,
+                  "url":origin,
+                  "hostname":parseUrl(dataSetting["target"]).hostname
+                });
+                await remakeUrlElement(dom,{
+                  "element":"a",
+                  "target":"href",
+                  "remake":"href",
+                  "origin":originUrl,
+                  "proto":proto,
+                  "url":origin,
+                  "hostname":parseUrl(dataSetting["target"]).hostname
+                });
+                await remakeUrlElement(dom,{
+                  "element":"img",
+                  "target":"src",
+                  "remake":"src",
+                  "origin":originUrl,
+                  "proto":proto,
+                  "url":origin,
+                  "hostname":parseUrl(dataSetting["target"]).hostname
+                });
+                await remakeUrlElement(dom,{
+                  "element":"img",
+                  "target":"data-src",
+                  "remake":"src",
+                  "origin":originUrl,
+                  "proto":proto,
+                  "url":origin,
+                  "hostname":parseUrl(dataSetting["target"]).hostname
+                });
+                dataSetting["inject-element-head"].reverse().forEach(function(a){
+                  let createEl=dom.createElement(a["name-element"]);
+                  a["data-attribute"].forEach(function(b){
+                    createEl.setAttribute(b["name-attribute"],b["value-attribute"]);
+                  });
+                  createEl.innerHTML=a["data-innerHTML"];
+                  if(a["position"]=="start"){
+                    dom.head.insertBefore(createEl, dom.head.firstChild);
                   }else{
-                    // console.log(resOriginHeader);
-                    // console.log(codeContent);
-                    // console.log(typeContent);
-                    res.end("404");
+                    dom.head.appendChild(createEl);
                   };
+                });
+                dataSetting["inject-element-body"].reverse().forEach(function(a){
+                  let createEl=dom.createElement(a["name-element"]);
+                  a["data-attribute"].forEach(function(b){
+                    createEl.setAttribute(b["name-attribute"],b["value-attribute"]);
+                  });
+                  createEl.innerHTML=a["data-innerHTML"];
+                  if(a["position"]=="start"){
+                    dom.body.insertBefore(createEl, dom.body.firstChild);
+                  }else{
+                    dom.body.appendChild(createEl);
+                  };
+                });
+                let dataTitle="";
+                dom.querySelectorAll("title").forEach(function(a){
+                  dataTitle=a.innerHTML;
+                  a.remove();
+                });
+                let createTitle=dom.createElement("title");
+                createTitle.innerHTML=dataTitle;
+                dom.head.insertBefore(createTitle, dom.head.firstChild);
+                let domBody=dom.body.outerHTML;
+                let dataReplace=[];
+                dataSetting["costom-element-remove"].forEach(function(a){
+                  if(a.target==hostname){
+                    a["element-remove-selector"].forEach(function(b){
+                      dom.querySelectorAll(b).forEach(function(c){
+                        c.remove();
+                      });
+                    });
+                    dataReplace=a["replace-string"];
+                  };
+                });
+                let textBody=dom.documentElement.querySelector("body").textContent;
+                let dataDescription=[];
+                for(var i=0;i<10;i++){
+                  textBody=textBody.replace(/\n/g,"").replace(/[`~!@#$%^&*()_\-+=\[\]{};:'"\\|\/<>?\s]/g, ' ').replace(/  /g," ");
+                };
+                textBody=textBody.split(" ");
+                textBody.forEach(function(a,i){
+                  if(a.length>=3){
+                    if(i>10&&i<50){
+                      dataDescription.push(a);
+                    };
+                  };
+                });
+                if(dataDescription.length>0){
+                  dataDescription=dataDescription.join(" ");
+                }else{
+                  dataDescription="";
+                };
+                dom=dom.documentElement.outerHTML;
+                if(dataSetting["remove-comment-html"]){
+                  removeHtmlComments(domBody).comments.forEach(function(a){
+                    dom=dom.replace(a,"");
+                  });
+                };
+                dataReplace.forEach(function(a){
+                  dom=dom.replace(a.target,a.replace);
+                });
+                dom=dom.replace(/\$\{titlePost\}/g,dataTitle);
+                dom=dom.replace(/\$\{urlPost\}/g,fullUrl);
+                dom=dom.replace(/\$\{nameWeb\}/g,dataSetting["name-web"]);
+                dom=dom.replace(/\$\{timePublish\}/g,new Date().toISOString());
+                dom=dom.replace(/\$\{authorPost\}/g,dataSetting["author"]);
+                dom=dom.replace(/\$\{descriptionPost\}/g,dataDescription+"...");
+                dom="<!DOCTYPE html>"+dom;
+                gzip(dom)
+                .then((compressed) => {
+                  res.write(compressed);
+                  res.end();
+                })
+                .catch(function(e){
+                  res.end("404");
+                });
+              };
+            }else{
+              
+              if(codeContent==404){
+                res.end("404");
+              }else{
+                // check content image        
+                //console.log("--------")
+                if(typeContent.indexOf("image/")==0||typeContent.indexOf("font/")==0){
+                  let getContent=unirest.request({
+                    uri:linkPost,
+                    headers: headerDafult,
+                    gzip: true
+                  }).on('error', error => {
+                    //console.log(error)
+                    res.end("404");
+                  }).pipe(res);
+                }else if(typeContent.indexOf("application/atom+xml")==0||typeContent.indexOf("application/xml")==0||typeContent.indexOf("text/xml")==0||typeContent.indexOf("application/xslt+xml")==0||req.url.indexOf(".xsl")>0){
+                  //console.log(linkPost)
+                  let dataXML="";
+                  let getContent=unirest.request({
+                    uri:linkPost,
+                    headers: headerDafult,
+                    gzip: true
+                  }).on('error', error => {
+                    res.end("404");
+                  });
+                  getContent.on('data', function(data) {
+                    dataXML=dataXML+data;
+                  });
+                  getContent.on('end', function() {
+                    try{
+                      let hostname="//"+parseUrl(linkPost).hostname;
+                      let re = new RegExp(dataSetting["target"], 'g');
+                      let re2 = new RegExp(hostname, 'g');
+                      if(statusOrigin==false){
+                        re = new RegExp(parseUrl(linkPost).origin, 'g');
+                      };
+                      dataXML=dataXML.replace(re,originUrl+"/"+dataOrigin);
+                      dataXML=dataXML.replace(re2,originUrl+"/"+dataOrigin);
+                      if(hostname.indexOf("www")==-1){
+                        let re3=hostname.replace("//","//www.");
+                        re3=new RegExp(re3, 'g');
+                        //console.log(re3)
+                      }else{
+                        let re3=hostname.replace("//www.","//");
+                        re3=new RegExp(re3, 'g');
+                        dataXML=dataXML.replace(re3,originUrl+"/"+dataOrigin);
+                      };
+                      let re4 = new RegExp("https:http", 'g');
+                      let re5 = new RegExp("https:https", 'g');
+                      let re6 = new RegExp("http:https", 'g');
+                      let re7 = new RegExp("http:http", 'g');
+                      dataXML=dataXML.replace(re4,"http");
+                      dataXML=dataXML.replace(re5,"https");
+                      dataXML=dataXML.replace(re6,"https");
+                      dataXML=dataXML.replace(re7,"http");                        
+
+                      res.writeHead(200, {
+                        "content-type": typeContent
+                      });
+                      res.end(dataXML);
+                    }catch(e){
+                      res.end("404");
+                    };
+                  });
+                }else if(typeContent.indexOf("text/css")==0){
+                  let dataCSS="";
+                  let getContent=unirest.request({
+                    uri:linkPost,
+                    headers: headerDafult,
+                    gzip: true
+                  }).on('error', error => {
+                    res.end("404");
+                  });
+                  getContent.on('data', function(data) {
+                    dataCSS=dataCSS+data;
+                  });
+                  getContent.on('end', function() {
+                    res.writeHead(200,resOriginHeader);
+                    //console.log(dataCSS);
+                    res.end(dataCSS);
+                  });
+                }else{
+                  // console.log(resOriginHeader);
+                  // console.log(codeContent);
+                  // console.log(typeContent);
+                  //console.log("1")
+                  res.end("404");
                 };
               };
-            }catch(e){
-              res.end("404");
             };
-          });
+          };
         }else{
+          //console.log("3")
           res.end("404");
         };
       }catch(e){
+        console.log(e)
+        //console.log("4")
         res.end("404");
       };
     }else {
+      //console.log("5")
       res.end("404");
     };
   }catch(e){
