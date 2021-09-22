@@ -2,7 +2,7 @@
   "name-web":"BERITA DAN INFORMASI TERBARU",
   "author":"AGC-KU",
   "remove-comment-html":true,
-  "target":"https://www.pikiran-rakyat.com/",
+  "target":"https://m.kumparan.com/",
   "name-folder-sitemap":"sitemap",
   "element-remove":[
     "script",
